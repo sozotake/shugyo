@@ -3,41 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>妙法カウンター</title>
+    <title>妙法カウンター 高感度版</title>
     <style>
         body {
             margin: 0; padding: 0; background-color: #000; color: #fff;
             font-family: 'Hiragino Mincho ProN', serif; overflow: hidden;
             display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
         }
-        #status { position: absolute; top: 20px; font-size: 14px; color: #333; text-align: center; }
+        #status { position: absolute; top: 20px; font-size: 14px; color: #222; text-align: center; }
         #count-display {
-            font-size: 160px; font-weight: bold; color: #ff4500;
+            font-size: 180px; font-weight: bold; color: #ff4500;
             text-shadow: 0 0 20px #ff0000;
             transition: transform 0.05s ease-out;
         }
         #start-btn {
-            padding: 20px 40px; font-size: 20px;
-            background: #111; color: #666; border: 1px solid #333; border-radius: 50px;
+            padding: 25px 50px; font-size: 20px;
+            background: #111; color: #444; border: 1px solid #222; border-radius: 50px;
             cursor: pointer; margin-top: 50px;
         }
         #reset-btn {
-            position: absolute; bottom: 20px; right: 20px; font-size: 12px;
-            background: transparent; color: #222; border: none; padding: 10px;
+            position: absolute; bottom: 20px; right: 20px; font-size: 10px;
+            background: transparent; color: #111; border: none; padding: 10px;
         }
     </style>
 </head>
 <body>
 
-    <div id="status">Ready</div>
+    <div id="status">READY</div>
     <div id="count-display">0</div>
     <button id="start-btn" onclick="toggleRecognition()">修行開始</button>
     <button id="reset-btn" onclick="resetCount()">RESET</button>
 
     <script>
-        // 設定：次のカウントを受け付けるまでの最短時間（ミリ秒）
-        // 読経のテンポに合わせて 800〜1200 の間で調整してください
-        const COUNT_INTERVAL = 800; 
+        // 反応の鋭さ調整（ミリ秒）
+        const COUNT_INTERVAL = 700; 
         
         let count = parseInt(localStorage.getItem('shugyo_count')) || 0;
         let isRecognizing = false;
@@ -53,46 +52,44 @@
         const recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
         recognition.continuous = true;
-        recognition.interimResults = true;
+        recognition.interimResults = true; // 途中経過を拾う（これが重要）
 
         function toggleRecognition() {
             if (!isRecognizing) {
                 recognition.start();
                 isRecognizing = true;
                 startBtn.innerText = "中断";
-                statusDisplay.innerText = "Listening...";
+                statusDisplay.innerText = "ON";
             } else {
                 recognition.stop();
                 isRecognizing = false;
                 startBtn.innerText = "修行開始";
-                statusDisplay.innerText = "Stopped";
+                statusDisplay.innerText = "OFF";
             }
         }
 
         recognition.onresult = (event) => {
-            let interimTranscript = '';
+            let transcript = '';
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-                interimTranscript += event.results[i][0].transcript;
+                transcript += event.results[i][0].transcript;
             }
 
             const now = Date.now();
             
-            // 判定：妙法 または 妙法蓮華経（ひらがな誤認も含む）に反応
-            if (/妙法|みょうほう|みょーほー|蓮華経/.test(interimTranscript)) {
+            // 判定：聞き間違えやすい音もすべて網羅
+            // 「みょうほう」「みょーほー」「にょうほう」「れんげきょう」など
+            if (/[みミ][ょョ][うウー][ほホ][うウー]|妙法|蓮華|れんげ/.test(transcript)) {
                 if (now - lastCountTime > COUNT_INTERVAL) {
                     incrementCount();
                     lastCountTime = now;
-                    // 反応した瞬間に一旦停止してリセット（これが連続認識のコツ）
+                    // 反応したら即リセット（次の音を拾いやすくするため）
                     recognition.stop();
                 }
             }
         };
 
-        // 停止しても修行中なら即座に再起動
         recognition.onend = () => {
-            if (isRecognizing) {
-                recognition.start();
-            }
+            if (isRecognizing) recognition.start();
         };
 
         function incrementCount() {
@@ -100,15 +97,14 @@
             countDisplay.innerText = count;
             localStorage.setItem('shugyo_count', count);
 
-            // 数字が動く最小限の演出
-            countDisplay.style.transform = 'scale(1.2)';
+            countDisplay.style.transform = 'scale(1.25)';
             setTimeout(() => countDisplay.style.transform = 'scale(1)', 50);
             
-            if (navigator.vibrate) navigator.vibrate(40);
+            if (navigator.vibrate) navigator.vibrate(50);
         }
 
         function resetCount() {
-            if(confirm("累計をリセットしますか？")) {
+            if(confirm("リセット？")) {
                 count = 0;
                 countDisplay.innerText = 0;
                 localStorage.removeItem('shugyo_count');
