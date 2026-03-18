@@ -3,205 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>煉獄・お題目カウンター</title>
+    <title>煉獄・お題目カウンター V2</title>
     <style>
         body {
-            margin: 0;
-            padding: 0;
-            background-color: #000;
-            color: #fff;
-            font-family: 'Hiragino Mincho ProN', 'serif';
-            overflow: hidden; /* スクロール禁止 */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+            margin: 0; padding: 0; background-color: #000; color: #fff;
+            font-family: 'Hiragino Mincho ProN', serif; overflow: hidden;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
         }
-
-        #container {
-            text-align: center;
-            position: relative;
-        }
-
+        #status { position: absolute; top: 20px; font-size: 14px; color: #666; width: 100%; text-align: center; }
         #count-display {
-            font-size: 120px;
-            font-weight: bold;
-            color: #ff4500; /* 煉獄カラー（オレンジレッド） */
-            text-shadow: 0 0 10px #ff0000, 0 0 20px #ff8c00;
-            transition: transform 0.1s ease-out; /* カウント時の鼓動効果 */
+            font-size: 140px; font-weight: bold; color: #ff4500;
+            text-shadow: 0 0 15px #ff0000, 0 0 30px #ff8c00;
+            transition: transform 0.05s ease-out; z-index: 10;
         }
-
-        #phrase-display {
-            font-size: 24px;
-            color: #ccc;
-            margin-top: -10px;
-            min-height: 30px;
-        }
-
-        #status {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            font-size: 14px;
-            color: #666;
-        }
-
+        #phrase-display { font-size: 20px; color: #aaa; margin-bottom: 20px; min-height: 24px; text-align: center; width: 80%; }
         #start-btn {
-            padding: 15px 30px;
-            font-size: 20px;
-            background: linear-gradient(45deg, #ff0000, #ff8c00);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 5px 15px rgba(255, 0, 0, 0.4);
-            margin-top: 30px;
+            padding: 20px 40px; font-size: 22px; font-weight: bold;
+            background: linear-gradient(45deg, #b22222, #ff4500);
+            color: white; border: none; border-radius: 50px;
+            box-shadow: 0 0 20px rgba(255, 69, 0, 0.6); cursor: pointer;
+            z-index: 20;
         }
-
-        /* 炎のエフェクト（パーティクル） */
+        #reset-btn {
+            position: absolute; bottom: 20px; right: 20px; font-size: 12px;
+            background: #222; color: #555; border: 1px solid #333; padding: 5px 10px; border-radius: 5px;
+        }
         .fire-particle {
-            position: absolute;
-            background: radial-gradient(#ffff00, #ff4500, transparent);
-            border-radius: 50%;
-            pointer-events: none;
-            opacity: 0;
+            position: absolute; background: radial-gradient(#ffff00, #ff4500, transparent);
+            border-radius: 50%; pointer-events: none; z-index: 1;
         }
-
     </style>
 </head>
 <body>
 
-    <div id="status">待機中...</div>
+    <div id="status">読経を開始してください</div>
 
-    <div id="container">
-        <div id="phrase-display">（ここにお題目が出ます）</div>
+    <div id="container" style="text-align: center; width: 100%;">
+        <div id="phrase-display">（待機中）</div>
         <div id="count-display">0</div>
-        <button id="start-btn">修行開始 (マイクON)</button>
+        <button id="start-btn" onclick="toggleRecognition()">修行開始</button>
     </div>
 
+    <button id="reset-btn" onclick="resetCount()">累計リセット</button>
+
     <script>
-        let count = 0;
+        // 設定値
+        const COUNT_INTERVAL = 2000; // カウント後の無反応時間（2000ms = 2秒）
+        
+        let count = parseInt(localStorage.getItem('shugyo_count')) || 0; // 保存された値を取得
+        let isRecognizing = false;
+        let lastCountTime = 0;
+        
         const countDisplay = document.getElementById('count-display');
         const phraseDisplay = document.getElementById('phrase-display');
         const statusDisplay = document.getElementById('status');
         const startBtn = document.getElementById('start-btn');
-        const container = document.getElementById('container');
 
-        // 音声認識の設定
+        // 初期表示
+        countDisplay.innerText = count;
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-        if (!SpeechRecognition) {
-            statusDisplay.innerText = "このブラウザは音声認識非対応です。Safari等を使ってください。";
-            startBtn.style.display = 'none';
-        } else {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'ja-JP';
-            recognition.continuous = true; // 連続認識
-            recognition.interimResults = true; // 途中結果を取得（ここがリアルタイム性の鍵）
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ja-JP';
+        recognition.continuous = true;
+        recognition.interimResults = true;
 
-            let isRecognizing = false;
-
-            startBtn.addEventListener('click', () => {
-                if (!isRecognizing) {
-                    recognition.start();
-                    startBtn.innerText = "修行中... (停止するには画面タップ)";
-                    startBtn.style.opacity = 0.5;
-                    statusDisplay.innerText = "マイク聴取中...";
-                    isRecognizing = true;
-                }
-            });
-
-            // 画面全体をタップで停止できるようにする
-            document.body.addEventListener('click', (e) => {
-                if (isRecognizing && e.target !== startBtn) {
-                    recognition.stop();
-                    startBtn.innerText = "修行を再開";
-                    startBtn.style.opacity = 1;
-                    statusDisplay.innerText = "停止中";
-                    isRecognizing = false;
-                }
-            });
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        // 確定した結果（ここではあまり使わない）
-                    } else {
-                        // 途中結果を解析
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-
-                phraseDisplay.innerText = interimTranscript;
-
-                // 「南無」「妙法」の音節を聞き取ったらカウント
-                // 高速認識のため、短いキーワードで判定します。
-                if (interimTranscript.includes('妙法') || interimTranscript.includes('みょうほう')) {
-                    incrementCount();
-                    // 認識した部分をクリアして重複カウントを防ぐ
-                    recognition.stop(); 
-                    setTimeout(() => recognition.start(), 10); // すぐに再開
-                }
-            };
-
-            recognition.onerror = (event) => {
-                console.error("Speech Recognition Error", event.error);
-                statusDisplay.innerText = "エラー: " + event.error;
+        function toggleRecognition() {
+            if (!isRecognizing) {
+                recognition.start();
+                isRecognizing = true;
+                startBtn.innerText = "修行中断";
+                startBtn.style.background = "#333";
+                statusDisplay.innerText = "マイク稼働中：お題目をどうぞ";
+            } else {
+                recognition.stop();
                 isRecognizing = false;
-            };
-
-            recognition.onend = () => {
-                // 自動で止まった場合、修行中なら再開させる
-                if (isRecognizing) {
-                    recognition.start();
-                }
-            };
-        }
-
-        // カウントアップと演出
-        function incrementCount() {
-            count++;
-            countDisplay.innerText = count;
-
-            // 1. カウント表示を鼓動させる
-            countDisplay.style.transform = 'scale(1.2)';
-            setTimeout(() => countDisplay.style.transform = 'scale(1)', 100);
-
-            // 2. 炎のパーティクル（煉獄エフェクト）を生成
-            createFireEffect();
-        }
-
-        // 炎のエフェクトを生成する関数
-        function createFireEffect() {
-            for (let i = 0; i < 15; i++) { // パーティクルの数
-                const particle = document.createElement('div');
-                particle.classList.add('fire-particle');
-                
-                // サイズ、位置、速度をランダムに
-                const size = Math.random() * 20 + 10 + 'px';
-                particle.style.width = size;
-                particle.style.height = size;
-                
-                // カウント表示の周りから発生
-                const rect = countDisplay.getBoundingClientRect();
-                particle.style.left = rect.left + rect.width / 2 + (Math.random() - 0.5) * rect.width + 'px';
-                particle.style.top = rect.top + rect.height / 2 + (Math.random() - 0.5) * rect.height + 'px';
-
-                document.body.appendChild(particle);
-
-                // アニメーション（上へ昇りながら消える）
-                particle.animate([
-                    { transform: 'translateY(0) scale(1)', opacity: 1 },
-                    { transform: `translateY(-${Math.random() * 200 + 100}px) scale(0)`, opacity: 0 }
-                ], {
-                    duration: Math.random() * 1000 + 500, // 0.5〜1.5秒
-                    easing: 'ease-out'
-                }).onfinish = () => particle.remove(); // アニメーション終了後に削除
+                startBtn.innerText = "修行再開";
+                startBtn.style.background = "linear-gradient(45deg, #b22222, #ff4500)";
+                statusDisplay.innerText = "一時停止中";
             }
         }
 
+        recognition.onresult = (event) => {
+            let interimTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                interimTranscript += event.results[i][0].transcript;
+            }
+            phraseDisplay.innerText = interimTranscript;
+
+            const now = Date.now();
+            // 特定のキーワードが含まれ、かつ前回のカウントから指定秒数経っているか
+            if (/南無|なむ|妙法|蓮華|経/.test(interimTranscript)) {
+                if (now - lastCountTime > COUNT_INTERVAL) {
+                    incrementCount();
+                    lastCountTime = now;
+                    // iOSの重複判定を防ぐため一度リセット
+                    recognition.stop();
+                }
+            }
+        };
+
+        recognition.onend = () => { if (isRecognizing) recognition.start(); };
+
+        function incrementCount() {
+            count++;
+            countDisplay.innerText = count;
+            localStorage.setItem('shugyo_count', count); // ブラウザに保存
+
+            // 演出
+            countDisplay.style.transform = 'scale(1.4)';
+            setTimeout(() => countDisplay.style.transform = 'scale(1)', 70);
+            if (navigator.vibrate) navigator.vibrate([50, 30, 50]); // 煉獄っぽい振動
+            createFire();
+        }
+
+        function resetCount() {
+            if(confirm("累計カウントをリセットしますか？")) {
+                count = 0;
+                countDisplay.innerText = 0;
+                localStorage.removeItem('shugyo_count');
+            }
+        }
+
+        function createFire() {
+            for (let i = 0; i < 25; i++) {
+                const p = document.createElement('div');
+                p.classList.add('fire-particle');
+                const size = Math.random() * 35 + 10 + 'px';
+                p.style.width = size; p.style.height = size;
+                const rect = countDisplay.getBoundingClientRect();
+                p.style.left = rect.left + rect.width/2 + (Math.random()-0.5)*250 + 'px';
+                p.style.top = rect.top + rect.height/2 + (Math.random()-0.5)*150 + 'px';
+                document.body.appendChild(p);
+                p.animate([
+                    { transform: 'translateY(0) scale(1)', opacity: 1 },
+                    { transform: `translateY(-${Math.random()*500 + 200}px) rotate(${Math.random()*360}deg) scale(0)`, opacity: 0 }
+                ], { duration: 1000, easing: 'ease-out' }).onfinish = () => p.remove();
+            }
+        }
     </script>
 </body>
 </html>
